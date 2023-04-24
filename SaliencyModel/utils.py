@@ -3,7 +3,7 @@ import cv2
 from scipy import stats
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from PIL import Image
+from PIL import Image, ImageOps
 import cv2
 
 
@@ -143,6 +143,7 @@ def click_select_position(pil_img, window_size=16):
 def prepare_images(hr_path, scale=4):
     hr_pil = Image.open(hr_path)
     sizex, sizey = hr_pil.size
+    # crop
     hr_pil = hr_pil.crop((0, 0, sizex - sizex % scale, sizey - sizey % scale))
     sizex, sizey = hr_pil.size
     lr_pil = hr_pil.resize((sizex // scale, sizey // scale), Image.BICUBIC)

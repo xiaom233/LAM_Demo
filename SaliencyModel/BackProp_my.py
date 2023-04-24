@@ -14,7 +14,14 @@ def attribution_objective(attr_func, h, w, window=16):
 def saliency_map_gradient(numpy_image, model, attr_func):
     img_tensor = torch.from_numpy(numpy_image)
     img_tensor.requires_grad_(True)
-    result = model(_add_batch_one(img_tensor))
+    if type(model).__name__ == 'IGNN':
+        img_tensor_s = imresize(img_tensor, 1/2)
+        img_tensor_s = img_tensor_s.cuda()
+        img_tensor_s.requires_grad_(True)
+        img_tensor = img_tensor.cuda()
+        result = model(_add_batch_one(img_tensor_s), _add_batch_one(img_tensor))
+    else:
+        result = model(_add_batch_one(img_tensor))
     target = attr_func(result)
     target.backward()
     return img_tensor.grad.numpy(), result
@@ -27,7 +34,15 @@ def I_gradient(numpy_image, baseline_image, model, attr_objective, fold, interp=
     for i in range(fold):
         img_tensor = torch.from_numpy(interpolated[i])
         img_tensor.requires_grad_(True)
-        result = model(_add_batch_one(img_tensor))
+
+        if type(model).__name__ == 'IGNN':
+            img_tensor_s = imresize(img_tensor, 1/2)
+            img_tensor_s = img_tensor_s.cuda()
+            img_tensor_s.requires_grad_(True)
+            img_tensor = img_tensor.cuda()
+            result = model(_add_batch_one(img_tensor_s), _add_batch_one(img_tensor))
+        else:
+            result = model(_add_batch_one(img_tensor))
         target = attr_objective(result)
         target.backward()
         grad = img_tensor.grad.numpy()
@@ -81,6 +96,7 @@ def Path_gradient(numpy_image, model, attr_objective, path_interpolation_func, c
         return \lambda(\alpha) and d\lambda(\alpha)/d\alpha, for \alpha\in[0, 1]
         This function return pil_numpy_images
     :return:
+    :return:
     """
     if cuda:
         model = model.cuda()
@@ -91,13 +107,19 @@ def Path_gradient(numpy_image, model, attr_objective, path_interpolation_func, c
     for i in range(image_interpolation.shape[0]):
         img_tensor = torch.from_numpy(image_interpolation[i])
         img_tensor.requires_grad_(True)
+        img_tensor.retain_grad()
         if cuda:
             if type(model).__name__ == 'IGNN':
-                img_tensor_s = imresize(img_tensor, 1 / 2)
-                img_tensor_s.requires_grad_(True)
-                result = model(_add_batch_one(img_tensor_s).cuda(), _add_batch_one(img_tensor).cuda())
+                img_tensor_s = imresize(img_tensor, 1/2)
+                img_tensor.requires_grad_(True)
+
+                img_tensor = img_tensor.cuda()
+                img_tensor_s = img_tensor_s.cuda()
+                result = model(_add_batch_one(img_tensor_s), _add_batch_one(img_tensor))
             else:
-                result = model(_add_batch_one(img_tensor).cuda())
+                img_tensor = img_tensor.cuda()
+                print(img_tensor.device)
+                result = model(_add_batch_one(img_tensor))
             target = attr_objective(result)
             target.backward()
             grad = img_tensor.grad.cpu().numpy()
@@ -113,6 +135,7 @@ def Path_gradient(numpy_image, model, attr_objective, path_interpolation_func, c
 
         grad_accumulate_list[i] = grad * lambda_derivative_interpolation[i]
         result_list.append(result.detach().cpu().numpy())
+
     results_numpy = np.asarray(result_list)
     return grad_accumulate_list, results_numpy, image_interpolation
 
@@ -145,3 +168,4 @@ def saliency_map_I_gradient(
     grad_list, result_list, _ = I_gradient(numpy_image, numpy_baseline, model, attr_objective, fold, interp='linear')
     final_grad = grad_list.mean(axis=0) * (numpy_image - numpy_baseline)
     return final_grad, result_list[-1]
+
